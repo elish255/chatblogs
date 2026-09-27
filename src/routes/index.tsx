@@ -1,24 +1,42 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
+import { chatblogMarkup } from "@/lib/chatblog-markup";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Chat Blog — Chat na Wageni, Pata Malipo" },
+      { name: "description", content: "Chat Kiswahili na wageni wanaojifunza lugha na ugundue Chat Blog." },
+      { property: "og:title", content: "Chat Blog — Chat na Wageni, Pata Malipo" },
+      { property: "og:description", content: "Chat Kiswahili na wageni wanaojifunza lugha na ugundue Chat Blog." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+    links: [{ rel: "stylesheet", href: "/chatblog.css" }],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // The reference's original behavior depends on DOMContentLoaded; mount it
+    // only after the complete reference DOM is present in the client.
+    const script = document.createElement("script");
+    script.src = "/chatblog.js";
+    script.async = false;
+    document.body.appendChild(script);
+    const initialize = () => document.dispatchEvent(new Event("DOMContentLoaded"));
+    script.addEventListener("load", initialize);
+    return () => {
+      script.removeEventListener("load", initialize);
+      script.remove();
+      root.current?.querySelectorAll(".modal-overlay").forEach((modal) => {
+        (modal as HTMLElement).style.display = "none";
+      });
+    };
+  }, []);
+
+  return <div ref={root} dangerouslySetInnerHTML={{ __html: chatblogMarkup }} />;
 }
