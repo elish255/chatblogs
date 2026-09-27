@@ -1,0 +1,3 @@
+- [ ] Reproduce the referenced ChatBlog layout and original content.
+- [ ] Wire chat, notifications, sounds, dialogs, and every visible action.
+- [ ] Verify the phone and desktop experience.
