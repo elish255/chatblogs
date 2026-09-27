@@ -36,7 +36,7 @@ npm run dev
 
 ## ChatBlog payment/register integration
 - Uses the existing shared Chatpesa Supabase tables (`profiles`, `payment_submissions`, `notifications`, etc.).
-- No `DROP`, `ALTER`, or new schema migration is included in ChatBlog, so the existing shared database is not modified by this project.
+- The registration update uses a separate additive table `chatblog_account_details`; it does not drop or alter existing Chatpesa tables/columns. Run `supabase/chatblog_registration.sql` once in the shared Supabase project.
 - Registration fee: TZS 14,500.
 - Manual payment: Lipa Namba 251161660 — ASSERT BRIDGE.
 - Automatic payment: Fimipay.

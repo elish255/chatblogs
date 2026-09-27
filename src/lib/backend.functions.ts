@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const USER_SELECT = "id,name,email,phone,status,balance,total_earned,total_withdrawn,bonus,created_at";
+const USER_SELECT = "id,name,email,phone,status,balance,total_earned,total_withdrawn,created_at";
 
 type SupabaseRow = Record<string, unknown>;
 
@@ -34,17 +34,51 @@ function admin(password: string) {
   if (!expected || password !== expected) throw new Error("Nenosiri la admin si sahihi.");
 }
 
+const EAST_AFRICA_COUNTRIES = [
+  "Burundi",
+  "Democratic Republic of the Congo",
+  "Kenya",
+  "Rwanda",
+  "Somalia",
+  "South Sudan",
+  "Tanzania",
+  "Uganda",
+] as const;
+
 const registerSchema = z.object({
   name: z.string().trim().min(3).max(80),
+  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/),
   email: z.string().trim().email().max(120),
   phone: z.string().trim().regex(/^(0|255)\d{9}$/),
+  country: z.enum(EAST_AFRICA_COUNTRIES),
+  password: z.string().min(8).max(128),
   partner: z.string().trim().max(120).optional().default(""),
 });
+
+async function hashPassword(password: string) {
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 120000, hash: "SHA-256" },
+    key,
+    256,
+  );
+  const toHex = (value: Uint8Array) => Array.from(value, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `pbkdf2-sha256$120000$${toHex(salt)}$${toHex(new Uint8Array(bits))}`;
+}
 
 export const registerUser = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => registerSchema.parse(data))
   .handler(async ({ data }) => {
     const token = crypto.randomUUID() + crypto.randomUUID();
+    const passwordHash = await hashPassword(data.password);
+    const existing = await db<SupabaseRow[]>(
+      `chatblog_account_details?username=eq.${encodeURIComponent(data.username)}&select=id&limit=1`,
+      { method: "GET" },
+    );
+    if (existing[0]) throw new Error("Username hiyo tayari inatumika.");
+
     const rows = await db<SupabaseRow[]>("profiles", {
       method: "POST",
       body: JSON.stringify({
@@ -57,11 +91,26 @@ export const registerUser = createServerFn({ method: "POST" })
         balance: 0,
         total_earned: 0,
         total_withdrawn: 0,
-        bonus: 0,
       }),
     });
     const user = rows[0];
     if (!user) throw new Error("Usajili haujahifadhiwa.");
+
+    try {
+      await db("chatblog_account_details", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: user.id,
+          username: data.username,
+          country: data.country,
+          password_hash: passwordHash,
+        }),
+      });
+    } catch (error) {
+      await db(`profiles?id=eq.${encodeURIComponent(String(user.id))}`, { method: "DELETE" });
+      throw error;
+    }
+
     return { ok: true as const, token, user };
   });
 
