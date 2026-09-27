@@ -1,9 +1,38 @@
--- Safe additive migration for ChatBlog registration.
--- Does NOT alter or drop any existing Chatpesa table/column.
+-- ChatBlog/Chatpesa shared-database compatibility migration.
+-- SAFE/ADDITIVE ONLY: no DROP, DELETE, TRUNCATE, or destructive ALTER.
+-- This brings the shared profiles table up to the fields used by the
+-- Chatpesa registration flow, but only creates columns that are missing.
+
+create extension if not exists pgcrypto;
+
+alter table public.profiles add column if not exists name text;
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists phone text;
+alter table public.profiles add column if not exists partner text default '';
+alter table public.profiles add column if not exists public_token text;
+alter table public.profiles add column if not exists status text default 'pending_payment';
+alter table public.profiles add column if not exists payment_phone text;
+alter table public.profiles add column if not exists balance numeric(14,2) default 0;
+alter table public.profiles add column if not exists total_earned numeric(14,2) default 0;
+alter table public.profiles add column if not exists total_withdrawn numeric(14,2) default 0;
+alter table public.profiles add column if not exists bonus numeric(14,2) default 0;
+alter table public.profiles add column if not exists created_at timestamptz default now();
+
+-- Backfill only NULLs so existing records are preserved.
+update public.profiles set balance = 0 where balance is null;
+update public.profiles set total_earned = 0 where total_earned is null;
+update public.profiles set total_withdrawn = 0 where total_withdrawn is null;
+update public.profiles set bonus = 0 where bonus is null;
+update public.profiles set partner = '' where partner is null;
+update public.profiles set status = 'pending_payment' where status is null;
+update public.profiles set created_at = now() where created_at is null;
+
+-- ChatBlog-specific credentials/profile extension.
 create table if not exists public.chatblog_account_details (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references public.profiles(id) on delete cascade,
   username text not null unique,
+  email text not null,
   country text not null,
   password_hash text not null,
   created_at timestamptz not null default now()
@@ -11,5 +40,11 @@ create table if not exists public.chatblog_account_details (
 
 alter table public.chatblog_account_details enable row level security;
 
--- The ChatBlog server uses the Supabase service-role key for all writes/reads.
--- No public policies are created intentionally.
+-- If this table already existed from an earlier ChatBlog version, preserve it
+-- and only add missing columns.
+alter table public.chatblog_account_details add column if not exists email text;
+alter table public.chatblog_account_details add column if not exists country text;
+alter table public.chatblog_account_details add column if not exists password_hash text;
+
+-- The ChatBlog server uses the Supabase service-role key for database access.
+-- No public policies are created here.

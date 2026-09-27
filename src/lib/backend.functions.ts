@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const USER_SELECT = "id,name,phone,status,balance,total_earned,total_withdrawn,created_at";
+const USER_SELECT = "id,name,email,phone,status,balance,total_earned,total_withdrawn,bonus,created_at";
 
 type SupabaseRow = Record<string, unknown>;
 
@@ -48,6 +48,7 @@ const EAST_AFRICA_COUNTRIES = [
 const registerSchema = z.object({
   name: z.string().trim().min(3).max(80),
   username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/),
+  email: z.string().trim().email().max(120),
   phone: z.string().trim().regex(/^(0|255)\d{9}$/),
   country: z.enum(EAST_AFRICA_COUNTRIES),
   password: z.string().min(8).max(128),
@@ -66,42 +67,6 @@ async function hashPassword(password: string) {
   const toHex = (value: Uint8Array) => Array.from(value, (b) => b.toString(16).padStart(2, "0")).join("");
   return `pbkdf2-sha256$120000$${toHex(salt)}$${toHex(new Uint8Array(bits))}`;
 }
-
-const loginSchema = z.object({
-  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/),
-  password: z.string().min(8).max(128),
-});
-
-async function verifyPassword(password: string, encoded: string) {
-  const parts = encoded.split("$");
-  if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256") return false;
-  const iterations = Number(parts[1]);
-  if (!Number.isFinite(iterations) || iterations < 1) return false;
-  const fromHex = (hex: string) => new Uint8Array((hex.match(/.{1,2}/g) ?? []).map((pair) => parseInt(pair, 16)));
-  const salt = fromHex(parts[2]);
-  const expected = fromHex(parts[3]);
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, expected.length * 8);
-  const actual = new Uint8Array(bits);
-  if (actual.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
-  return diff === 0;
-}
-
-export const loginUser = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => loginSchema.parse(data))
-  .handler(async ({ data }) => {
-    const details = await db<SupabaseRow[]>(`chatblog_account_details?username=eq.${encodeURIComponent(data.username)}&select=user_id,password_hash,username,country&limit=1`, { method: "GET" });
-    const detail = details[0];
-    if (!detail || !(await verifyPassword(data.password, String(detail.password_hash)))) {
-      throw new Error("Username au password si sahihi.");
-    }
-    const users = await db<SupabaseRow[]>(`profiles?id=eq.${encodeURIComponent(String(detail.user_id))}&select=id,name,phone,status,public_token&limit=1`, { method: "GET" });
-    const user = users[0];
-    if (!user) throw new Error("Akaunti haipatikani.");
-    return { ok: true as const, token: String(user.public_token), status: String(user.status), name: String(user.name), username: String(detail.username) };
-  });
 
 export const registerUser = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => registerSchema.parse(data))
@@ -125,6 +90,7 @@ export const registerUser = createServerFn({ method: "POST" })
         balance: 0,
         total_earned: 0,
         total_withdrawn: 0,
+        bonus: 0,
       }),
     });
     const user = rows[0];
@@ -136,6 +102,7 @@ export const registerUser = createServerFn({ method: "POST" })
         body: JSON.stringify({
           user_id: user.id,
           username: data.username,
+          email: data.email.toLowerCase(),
           country: data.country,
           password_hash: passwordHash,
         }),
@@ -148,6 +115,42 @@ export const registerUser = createServerFn({ method: "POST" })
     return { ok: true as const, token, user };
   });
 
+const loginSchema = z.object({
+  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/),
+  password: z.string().min(8).max(128),
+});
+
+async function verifyPassword(password: string, stored: string) {
+  const [algorithm, iterationsRaw, saltHex, hashHex] = stored.split("$");
+  if (algorithm !== "pbkdf2-sha256" || !iterationsRaw || !saltHex || !hashHex) return false;
+  const iterations = Number(iterationsRaw);
+  if (!Number.isFinite(iterations) || iterations < 1) return false;
+  const fromHex = (hex: string) => new Uint8Array(hex.match(/.{1,2}/g)?.map((x) => parseInt(x, 16)) ?? []);
+  const salt = fromHex(saltHex);
+  const expected = fromHex(hashHex);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, expected.length * 8);
+  const actual = new Uint8Array(bits);
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
+  return diff === 0;
+}
+
+export const loginUser = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => loginSchema.parse(data))
+  .handler(async ({ data }) => {
+    const details = await db<SupabaseRow[]>(`chatblog_account_details?username=eq.${encodeURIComponent(data.username)}&select=user_id,username,email,password_hash,country&limit=1`, { method: "GET" });
+    const account = details[0];
+    if (!account || !(await verifyPassword(data.password, String(account.password_hash ?? "")))) {
+      throw new Error("Username au password si sahihi.");
+    }
+    const users = await db<SupabaseRow[]>(`profiles?id=eq.${encodeURIComponent(String(account.user_id))}&select=id,name,email,phone,status,public_token,balance,total_earned,total_withdrawn,bonus,created_at&limit=1`, { method: "GET" });
+    const user = users[0];
+    if (!user) throw new Error("Akaunti haipatikani.");
+    return { ok: true as const, token: String(user.public_token), status: String(user.status), user: { ...user, username: account.username, email: account.email, country: account.country } };
+  });
+
 const tokenSchema = z.object({ token: z.string().min(20).max(100) });
 
 export const getDashboard = createServerFn({ method: "POST" })
@@ -156,20 +159,21 @@ export const getDashboard = createServerFn({ method: "POST" })
     const users = await db<SupabaseRow[]>(`profiles?public_token=eq.${encodeURIComponent(data.token)}&select=${USER_SELECT}&limit=1`, { method: "GET" });
     const user = users[0];
     if (!user) return { ok: false as const, message: "Akaunti haipatikani." };
-    const accountRows = await db<SupabaseRow[]>(`chatblog_account_details?user_id=eq.${encodeURIComponent(String(user.id))}&select=username,country&limit=1`, { method: "GET" });
-    const account = accountRows[0] ?? null;
+    const details = await db<SupabaseRow[]>(`chatblog_account_details?user_id=eq.${encodeURIComponent(String(user.id))}&select=username,email,country&limit=1`, { method: "GET" });
+    const account = details[0] ?? {};
+    const userWithAccount = { ...user, username: account.username ?? "", email: account.email ?? "", country: account.country ?? "" };
     const notes = await db<SupabaseRow[]>("notifications?active=eq.true&order=created_at.desc&limit=1&select=id,title,message,created_at", { method: "GET" });
     if (user.status !== "active") {
-      return { ok: true as const, active: false as const, status: user.status, user, account, notification: notes[0] ?? null };
+      return { ok: true as const, active: false as const, status: user.status, user: userWithAccount, notification: notes[0] ?? null };
     }
-    return { ok: true as const, active: true as const, status: user.status, user, account, notification: notes[0] ?? null };
+    return { ok: true as const, active: true as const, status: user.status, user: userWithAccount, notification: notes[0] ?? null };
   });
 
 const paymentSchema = z.object({ token: z.string().min(20).max(100), phone: z.string().trim().regex(/^(0|255)\d{9}$/) });
 export const submitPayment = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => paymentSchema.parse(data))
   .handler(async ({ data }) => {
-    const users = await db<SupabaseRow[]>(`profiles?public_token=eq.${encodeURIComponent(data.token)}&select=id,name,phone,status&limit=1`, { method: "GET" });
+    const users = await db<SupabaseRow[]>(`profiles?public_token=eq.${encodeURIComponent(data.token)}&select=id,name,email,status&limit=1`, { method: "GET" });
     const user = users[0];
     if (!user) throw new Error("Akaunti haipatikani.");
     await db("payment_submissions", { method: "POST", body: JSON.stringify({ user_id: user.id, phone: data.phone, amount: 14500, status: "pending" }) });
@@ -183,7 +187,7 @@ export const adminListUsers = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => adminSchema.parse(data))
   .handler(async ({ data }) => {
     admin(data.password);
-    const users = await db<SupabaseRow[]>("profiles?select=id,name,phone,status,balance,total_earned,total_withdrawn,created_at&order=created_at.desc", { method: "GET" });
+    const users = await db<SupabaseRow[]>("profiles?select=id,name,email,phone,status,balance,total_earned,total_withdrawn,created_at&order=created_at.desc", { method: "GET" });
     return { ok: true as const, users };
   });
 
