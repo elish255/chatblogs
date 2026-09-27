@@ -79,10 +79,13 @@ export const registerUser = createServerFn({ method: "POST" })
     );
     if (existing[0]) throw new Error("Username hiyo tayari inatumika.");
 
+    const profileId = crypto.randomUUID();
     const rows = await db<SupabaseRow[]>("profiles", {
       method: "POST",
       body: JSON.stringify({
+        id: profileId,
         name: data.name,
+        email: data.email.toLowerCase(),
         phone: data.phone,
         partner: data.partner,
         public_token: token,
