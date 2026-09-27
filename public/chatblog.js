@@ -2623,7 +2623,7 @@ function renderWazungu() {
     card.innerHTML = `
       <div class="mzungu-header">
         <div class="avatar-wrap">
-          <img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="avatar sprite-avatar" style="object-position: -9999px; background-position: ${((partner.id - 1) % 10) * 100 / 9}% ${Math.floor((partner.id - 1) / 10) * 20}%;" alt="${partner.name}">
+          <img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="avatar sprite-avatar" style="background-position: ${((partner.id - 1) % 10) * 100 / 9}% ${Math.floor((partner.id - 1) / 10) * 20}%;" alt="${partner.name}">
           <span class="presence-dot ${state}" aria-label="${state}"></span>
         </div>
         <div class="mzungu-info">
