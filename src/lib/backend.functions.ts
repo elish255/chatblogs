@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const USER_SELECT = "id,name,email,phone,status,balance,total_earned,total_withdrawn,created_at";
+const USER_SELECT = "id,name,phone,status,balance,total_earned,total_withdrawn,created_at";
 
 type SupabaseRow = Record<string, unknown>;
 
@@ -48,7 +48,6 @@ const EAST_AFRICA_COUNTRIES = [
 const registerSchema = z.object({
   name: z.string().trim().min(3).max(80),
   username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/),
-  email: z.string().trim().email().max(120),
   phone: z.string().trim().regex(/^(0|255)\d{9}$/),
   country: z.enum(EAST_AFRICA_COUNTRIES),
   password: z.string().min(8).max(128),
@@ -68,6 +67,42 @@ async function hashPassword(password: string) {
   return `pbkdf2-sha256$120000$${toHex(salt)}$${toHex(new Uint8Array(bits))}`;
 }
 
+const loginSchema = z.object({
+  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/),
+  password: z.string().min(8).max(128),
+});
+
+async function verifyPassword(password: string, encoded: string) {
+  const parts = encoded.split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256") return false;
+  const iterations = Number(parts[1]);
+  if (!Number.isFinite(iterations) || iterations < 1) return false;
+  const fromHex = (hex: string) => new Uint8Array((hex.match(/.{1,2}/g) ?? []).map((pair) => parseInt(pair, 16)));
+  const salt = fromHex(parts[2]);
+  const expected = fromHex(parts[3]);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, expected.length * 8);
+  const actual = new Uint8Array(bits);
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
+  return diff === 0;
+}
+
+export const loginUser = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => loginSchema.parse(data))
+  .handler(async ({ data }) => {
+    const details = await db<SupabaseRow[]>(`chatblog_account_details?username=eq.${encodeURIComponent(data.username)}&select=user_id,password_hash,username,country&limit=1`, { method: "GET" });
+    const detail = details[0];
+    if (!detail || !(await verifyPassword(data.password, String(detail.password_hash)))) {
+      throw new Error("Username au password si sahihi.");
+    }
+    const users = await db<SupabaseRow[]>(`profiles?id=eq.${encodeURIComponent(String(detail.user_id))}&select=id,name,phone,status,public_token&limit=1`, { method: "GET" });
+    const user = users[0];
+    if (!user) throw new Error("Akaunti haipatikani.");
+    return { ok: true as const, token: String(user.public_token), status: String(user.status), name: String(user.name), username: String(detail.username) };
+  });
+
 export const registerUser = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => registerSchema.parse(data))
   .handler(async ({ data }) => {
@@ -83,7 +118,6 @@ export const registerUser = createServerFn({ method: "POST" })
       method: "POST",
       body: JSON.stringify({
         name: data.name,
-        email: data.email.toLowerCase(),
         phone: data.phone,
         partner: data.partner,
         public_token: token,
@@ -122,18 +156,20 @@ export const getDashboard = createServerFn({ method: "POST" })
     const users = await db<SupabaseRow[]>(`profiles?public_token=eq.${encodeURIComponent(data.token)}&select=${USER_SELECT}&limit=1`, { method: "GET" });
     const user = users[0];
     if (!user) return { ok: false as const, message: "Akaunti haipatikani." };
+    const accountRows = await db<SupabaseRow[]>(`chatblog_account_details?user_id=eq.${encodeURIComponent(String(user.id))}&select=username,country&limit=1`, { method: "GET" });
+    const account = accountRows[0] ?? null;
     const notes = await db<SupabaseRow[]>("notifications?active=eq.true&order=created_at.desc&limit=1&select=id,title,message,created_at", { method: "GET" });
     if (user.status !== "active") {
-      return { ok: true as const, active: false as const, status: user.status, user, notification: notes[0] ?? null };
+      return { ok: true as const, active: false as const, status: user.status, user, account, notification: notes[0] ?? null };
     }
-    return { ok: true as const, active: true as const, status: user.status, user, notification: notes[0] ?? null };
+    return { ok: true as const, active: true as const, status: user.status, user, account, notification: notes[0] ?? null };
   });
 
 const paymentSchema = z.object({ token: z.string().min(20).max(100), phone: z.string().trim().regex(/^(0|255)\d{9}$/) });
 export const submitPayment = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => paymentSchema.parse(data))
   .handler(async ({ data }) => {
-    const users = await db<SupabaseRow[]>(`profiles?public_token=eq.${encodeURIComponent(data.token)}&select=id,name,email,status&limit=1`, { method: "GET" });
+    const users = await db<SupabaseRow[]>(`profiles?public_token=eq.${encodeURIComponent(data.token)}&select=id,name,phone,status&limit=1`, { method: "GET" });
     const user = users[0];
     if (!user) throw new Error("Akaunti haipatikani.");
     await db("payment_submissions", { method: "POST", body: JSON.stringify({ user_id: user.id, phone: data.phone, amount: 14500, status: "pending" }) });
@@ -147,7 +183,7 @@ export const adminListUsers = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => adminSchema.parse(data))
   .handler(async ({ data }) => {
     admin(data.password);
-    const users = await db<SupabaseRow[]>("profiles?select=id,name,email,phone,status,balance,total_earned,total_withdrawn,created_at&order=created_at.desc", { method: "GET" });
+    const users = await db<SupabaseRow[]>("profiles?select=id,name,phone,status,balance,total_earned,total_withdrawn,created_at&order=created_at.desc", { method: "GET" });
     return { ok: true as const, users };
   });
 
@@ -188,8 +224,8 @@ export const adminListRequests = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => adminSchema.parse(data))
   .handler(async ({ data }) => {
     admin(data.password);
-    const payments = await db<SupabaseRow[]>("payment_submissions?select=id,user_id,phone,amount,status,created_at,profiles(name,email,phone)&order=created_at.desc", { method: "GET" });
-    const withdrawals = await db<SupabaseRow[]>("withdrawals?select=id,user_id,amount,method,phone,status,created_at,profiles(name,email)&order=created_at.desc", { method: "GET" });
+    const payments = await db<SupabaseRow[]>("payment_submissions?select=id,user_id,phone,amount,status,created_at,profiles(name,phone)&order=created_at.desc", { method: "GET" });
+    const withdrawals = await db<SupabaseRow[]>("withdrawals?select=id,user_id,amount,method,phone,status,created_at,profiles(name)&order=created_at.desc", { method: "GET" });
     const notifications = await db<SupabaseRow[]>("admin_notifications?select=id,type,user_id,title,message,read,created_at&order=created_at.desc&limit=100", { method: "GET" });
     return { ok: true as const, payments, withdrawals, notifications };
   });

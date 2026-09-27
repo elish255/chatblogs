@@ -42,7 +42,7 @@ function Lipa() {
     try {
       const profile=await load({data:{token}});
       if(!profile.ok || !profile.user) throw new Error("Taarifa za akaunti hazipatikani.");
-      const order=await createOrder({data:{buyer_name:String(profile.user.name),buyer_email:String(profile.user.email),buyer_phone:normalized(),amount:ACTIVATION_FEE}});
+      const order=await createOrder({data:{buyer_name:String(profile.user.name),buyer_email:`${String(profile.account?.username ?? "customer")}@chatblog.site`,buyer_phone:normalized(),amount:ACTIVATION_FEE}});
       if(!order.ok || !order.order_id) throw new Error(order.message || "Imeshindikana kuanzisha Fimipay.");
       setMessage(order.message || "Thibitisha malipo kwenye simu yako.");
       let paid=false;
