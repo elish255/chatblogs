@@ -1,5 +1,11 @@
-const CHATBLOG_AVATAR_SPRITE = "/__l5e/assets-v1/bc0b72bb-247a-4197-a4ce-13aafa083dce/chatblog-avatars.jpg";
-function setSpriteAvatar(el,id){el.classList.add("sprite-avatar");el.style.backgroundPosition=`${((id-1)%10)*100/9}% ${Math.floor((id-1)/10)*20}%`;}
+const CHATBLOG_AVATAR_BASE = "/avatars/foreigner-";
+function avatarUrl(id){ return `${CHATBLOG_AVATAR_BASE}${Number(id)}.svg`; }
+function setSpriteAvatar(el,id){
+  el.classList.remove("sprite-avatar");
+  el.src = avatarUrl(id);
+  el.style.backgroundImage = "none";
+  el.style.backgroundPosition = "center";
+}
 /* =========================================================
    LUGHAPAY - KISWAHILI CONVERSATION ENGINE
    Version 2.1
@@ -2623,7 +2629,7 @@ function renderWazungu() {
     card.innerHTML = `
       <div class="mzungu-header">
         <div class="avatar-wrap">
-          <img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="avatar sprite-avatar" style="background-position: ${((partner.id - 1) % 10) * 100 / 9}% ${Math.floor((partner.id - 1) / 10) * 20}%;" alt="${partner.name}">
+          <img src="/avatars/foreigner-${partner.id}.svg" class="avatar" alt="${partner.name}">
           <span class="presence-dot ${state}" aria-label="${state}"></span>
         </div>
         <div class="mzungu-info">
@@ -2793,7 +2799,6 @@ function confirmStartChat(
 
   if (chatAvatar) {
 
-    chatAvatar.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
     setSpriteAvatar(chatAvatar, currentSelectedMzungu.id);
 
   }

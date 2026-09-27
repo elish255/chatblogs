@@ -32,3 +32,13 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+
+## ChatBlog payment/register integration
+- Uses the existing shared Chatpesa Supabase tables (`profiles`, `payment_submissions`, `notifications`, etc.).
+- No `DROP`, `ALTER`, or new schema migration is included in ChatBlog, so the existing shared database is not modified by this project.
+- Registration fee: TZS 14,500.
+- Manual payment: Lipa Namba 251161660 — ASSERT BRIDGE.
+- Automatic payment: Fimipay.
+- Required server environment variables are in `.env.example`. Keep `SUPABASE_SERVICE_ROLE_KEY` and `FIMIPAY_API_KEY` server-side.
+- The payment page intentionally has no USSD step instructions.

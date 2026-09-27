@@ -2550,7 +2550,7 @@ body{
   width:46px;height:46px;flex-basis:46px;padding:0;overflow:hidden;border-radius:14px;
   background:#0c1627;border:1px solid rgba(120,169,225,.28);box-shadow:0 8px 24px rgba(0,0,0,.28)
 }
-.logo-circle img{width:100%;height:100%;display:block}
+.logo-circle img{width:100%;height:100%;display:block;object-fit:contain}
 .brand-text h2{font-size:20px;letter-spacing:-.55px}
 .brand-text p{font-size:10px;margin-top:3px}
 .icon-circle{width:38px;height:38px;font-size:16px}
@@ -2661,7 +2661,7 @@ body{
 }
 
 .logo-circle{width:48px;height:48px;flex-basis:48px;border-radius:14px;background:#091225;border:1px solid rgba(139,92,246,.32);box-shadow:0 0 22px rgba(139,92,246,.14)}
-.logo-circle img{object-fit:cover}
+.logo-circle img{object-fit:contain}
 
 .header-banner{min-height:150px;padding:20px 18px 16px;border-radius:22px;background:linear-gradient(135deg,#20124d 0%,#243b8f 48%,#075985 100%);box-shadow:0 14px 32px rgba(0,0,0,.27),inset 0 1px 0 rgba(255,255,255,.10)}
 .header-banner h2{font-size:25px}.header-banner p{font-size:10px;max-width:78%;margin:8px 0 13px}
@@ -3139,4 +3139,4 @@ body.chat-active .customer-assistance-float {
   fill:currentColor;
 }
 /* Original profile photographs are packaged together locally instead of hotlinked. */
-.sprite-avatar { background-image: url('/__l5e/assets-v1/bc0b72bb-247a-4197-a4ce-13aafa083dce/chatblog-avatars.jpg'); background-size: 1000% 600%; background-repeat: no-repeat; object-fit: cover; }
+.sprite-avatar { background-image: url('/avatars/foreigner-1.svg'); background-size: 1000% 600%; background-repeat: no-repeat; object-fit: cover; }

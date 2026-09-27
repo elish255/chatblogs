@@ -1,0 +1,10 @@
+ChatBlog integration completed.
+
+Registration -> /jisajili -> shared Supabase profiles table -> /lipa.
+Payment: TZS 14,500.
+Manual: Lipa Namba 251161660, ASSERT BRIDGE, button NIMELIPIA.
+Automatic: Fimipay (server-side).
+No USSD/manual instruction steps on payment page.
+Logo: /public/chatblog-logo.png and /public/favicon.png.
+Foreigner avatars: /public/avatars/foreigner-1.svg through foreigner-30.svg.
+Shared database safety: no schema migration, drop, alter, or new tables added.

@@ -77,8 +77,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Chat Blog" },
-      { name: "description", content: "Chat Kiswahili na wageni kupitia Chat Blog." },
+      { title: "ChatBlog — Chat Kiswahili, Pata Malipo" },
+      { name: "description", content: "Chat Kiswahili na wageni kupitia ChatBlog." },
       { property: "og:title", content: "Chat Blog" },
       { property: "og:description", content: "Chat Kiswahili na wageni kupitia Chat Blog." },
       { property: "og:type", content: "website" },
