@@ -40,14 +40,20 @@ function Dashboard() {
   const logout = () => { clearToken(); navigate({ to: "/login" }); };
 
   const openChat = async (partner: (typeof dashboardPartners)[number]) => {
-    if (!token || !data?.active) return;
+    if (!token || !data?.active || chatBusy) return;
+
+    // Fungua chat ya mtu aliyeguswa mara moja, kisha tengeneza session upande wa server.
+    // Hii inazuia user kubaki kwenye dashboard wakati request ya kuanzisha chat inasubiri.
+    setSelected(partner);
+    setChatId("");
     setChatError("");
+    setText("");
+    setMessages([{ sender: "foreigner", text: partner.openings[0] ?? `Habari, mimi ni ${partner.name}.` }]);
     setChatBusy(true);
+
     try {
       const result = await beginChat({ data: { token, foreigner: partner.name, price: 8500 } });
-      setSelected(partner);
       setChatId(String(result.chatId));
-      setMessages([{ sender: "foreigner", text: partner.openings[0] ?? `Habari, mimi ni ${partner.name}.` }]);
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Chat haijaanza.");
     } finally {
@@ -130,7 +136,7 @@ function Dashboard() {
                     <span className="cb-partner-rate">TZS 8,500</span>
                   </div>
                   <p className="cb-partner-bio">{partner.bio}</p>
-                  <button className="cb-chat-btn" onClick={() => void openChat(partner)} disabled={chatBusy}>{chatBusy ? "Inaanza..." : "Chat"}</button>
+                  <button className="cb-chat-btn" onClick={() => void openChat(partner)} disabled={chatBusy}>{chatBusy && selected?.id === partner.id ? "Inafungua..." : "Chat"}</button>
                 </article>
               ))}
             </div>
@@ -151,7 +157,7 @@ function Dashboard() {
               {messages.map((message, index) => <div key={index} className={message.sender === "user" ? "cb-msg cb-msg-user" : "cb-msg cb-msg-foreigner"}>{message.text}</div>)}
               {chatError && <div className="cb-chat-error">{chatError}</div>}
             </div>
-            <div className="cb-chat-input"><input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void sendMessage(); }} placeholder="Andika ujumbe..." disabled={chatBusy} /><button onClick={() => void sendMessage()} disabled={chatBusy || !text.trim()}><Send className="h-4 w-4" /></button></div>
+            <div className="cb-chat-input"><input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void sendMessage(); }} placeholder={chatId ? "Andika ujumbe..." : "Inaunganisha chat..."} disabled={chatBusy || !chatId} /><button onClick={() => void sendMessage()} disabled={chatBusy || !chatId || !text.trim()}><Send className="h-4 w-4" /></button></div>
           </div>
         </div>
       )}
