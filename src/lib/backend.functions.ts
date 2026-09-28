@@ -140,47 +140,101 @@ export const registerUser = createServerFn({ method: "POST" })
     );
     if (existing[0]) throw new Error("Username hiyo tayari inatumika.");
 
+    const normalizedEmail = data.email.toLowerCase();
     const existingEmail = await db<SupabaseRow[]>(
-      `profiles?email=eq.${encodeURIComponent(data.email.toLowerCase())}&select=id&limit=1`,
+      `profiles?email=eq.${encodeURIComponent(normalizedEmail)}&select=id,name,email,phone,status,balance,total_earned,total_withdrawn,bonus,created_at&limit=1`,
       { method: "GET" },
     );
-    if (existingEmail[0]) throw new Error("Email hiyo tayari imesajiliwa.");
 
-    // profiles.id is linked to auth.users.id in the user's shared Supabase database.
-    // Therefore the Auth user MUST be created first; a random UUID alone cannot satisfy the FK.
+    // ChatBlog shares the same Supabase database with Chatpesa. An email can therefore
+    // already have a profiles row even when it has never completed ChatBlog registration.
+    // In that case, reuse the existing Auth/profile identity instead of treating it as
+    // a duplicate registration or trying to insert a second profiles row.
     let authUser: { id: string };
-    try {
-      const result = await createOrRecoverSupabaseAuthUser(data.email.toLowerCase(), data.password);
-      authUser = result.user;
-    } catch (error) {
-      const raw = error instanceof Error ? error.message : String(error);
-      if (/already|registered|exists|duplicate/i.test(raw)) {
-        throw new Error("Email hiyo tayari inatumika. Kama uliwahi kujaribu usajili bila kukamilika, tumia email hiyo tena baada ya kusafishwa kwenye Auth.");
+    let user: SupabaseRow | undefined;
+    let authCreated = false;
+
+    if (existingEmail[0]?.id) {
+      authUser = { id: String(existingEmail[0].id) };
+      user = existingEmail[0];
+
+      // Make sure the Auth record exists. If it does, update its password so the
+      // credentials entered on this ChatBlog registration remain usable.
+      const authByEmail = await findSupabaseAuthUserByEmail(normalizedEmail);
+      if (authByEmail) {
+        // The profiles FK must point to this same Auth user. If the shared database
+        // contains inconsistent legacy data, do not silently attach the wrong account.
+        if (authByEmail.id !== String(existingEmail[0].id)) {
+          throw new Error("Email hii ina records zinazokinzana kwenye akaunti ya zamani. Tafadhali tumia email nyingine au safisha record hiyo ya zamani.");
+        }
+        authUser = { id: authByEmail.id };
+        try {
+          await authAdmin(`admin/users/${encodeURIComponent(authByEmail.id)}`, {
+            method: "PUT",
+            body: JSON.stringify({ password: data.password, email_confirm: true }),
+          });
+        } catch {
+          // The legacy PBKDF2 login below still works even if Auth password update fails.
+        }
       }
-      throw new Error(`Usajili wa akaunti umeshindikana: ${raw}`);
+
+      // Existing shared profiles may not have a ChatBlog token yet. Give them one
+      // without overwriting an existing token used by another part of the system.
+      if (!user.public_token) {
+        await db(`profiles?id=eq.${encodeURIComponent(String(user.id))}`, {
+          method: "PATCH",
+          body: JSON.stringify({ public_token: token }),
+        });
+        user = { ...user, public_token: token };
+      } else {
+        token = String(user.public_token);
+      }
+    } else {
+      // profiles.id is linked to auth.users.id in the shared Supabase database.
+      // Therefore Auth must be created first; a random UUID cannot satisfy the FK.
+      try {
+        const result = await createOrRecoverSupabaseAuthUser(normalizedEmail, data.password);
+        authUser = result.user;
+        authCreated = result.created;
+      } catch (error) {
+        const raw = error instanceof Error ? error.message : String(error);
+        if (/already|registered|exists|duplicate/i.test(raw)) {
+          throw new Error("Email hiyo tayari inatumika. Inaonekana kuna akaunti ya zamani kwenye mfumo.");
+        }
+        throw new Error(`Usajili wa akaunti umeshindikana: ${raw}`);
+      }
+
+      const rows = await db<SupabaseRow[]>("profiles", {
+        method: "POST",
+        body: JSON.stringify({
+          id: authUser.id,
+          name: data.name,
+          email: normalizedEmail,
+          phone: data.phone,
+          partner: data.partner,
+          public_token: token,
+          status: "pending_payment",
+          balance: 0,
+          total_earned: 0,
+          total_withdrawn: 0,
+          bonus: 0,
+        }),
+      });
+      user = rows[0];
+      if (!user) {
+        if (authCreated) await deleteSupabaseAuthUser(authUser.id);
+        throw new Error("Usajili haujahifadhiwa.");
+      }
     }
 
-    const profileId = authUser.id;
-    const rows = await db<SupabaseRow[]>("profiles", {
-      method: "POST",
-      body: JSON.stringify({
-        id: profileId,
-        name: data.name,
-        email: data.email.toLowerCase(),
-        phone: data.phone,
-        partner: data.partner,
-        public_token: token,
-        status: "pending_payment",
-        balance: 0,
-        total_earned: 0,
-        total_withdrawn: 0,
-        bonus: 0,
-      }),
-    });
-    const user = rows[0];
-    if (!user) {
-      await deleteSupabaseAuthUser(authUser.id);
-      throw new Error("Usajili haujahifadhiwa.");
+    // Do not create a second ChatBlog account-details row for the same user.
+    // If one already exists, keep the existing username and credentials.
+    const existingDetails = await db<SupabaseRow[]>(
+      `chatblog_account_details?user_id=eq.${encodeURIComponent(String(user.id))}&select=id,username,email,country,password_hash&limit=1`,
+      { method: "GET" },
+    );
+    if (existingDetails[0]) {
+      throw new Error("Akaunti hii tayari ina usajili wa ChatBlog. Tumia Login.");
     }
 
     try {
@@ -189,14 +243,18 @@ export const registerUser = createServerFn({ method: "POST" })
         body: JSON.stringify({
           user_id: user.id,
           username: data.username,
-          email: data.email.toLowerCase(),
+          email: normalizedEmail,
           country: data.country,
           password_hash: passwordHash,
         }),
       });
     } catch (error) {
-      await db(`profiles?id=eq.${encodeURIComponent(String(user.id))}`, { method: "DELETE" });
-      await deleteSupabaseAuthUser(authUser.id);
+      // Only clean up records created by this registration attempt. Never delete a
+      // pre-existing shared Chatpesa profile.
+      if (authCreated) {
+        await db(`profiles?id=eq.${encodeURIComponent(String(user.id))}`, { method: "DELETE" });
+        await deleteSupabaseAuthUser(authUser.id);
+      }
       throw error;
     }
 
