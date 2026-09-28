@@ -68,6 +68,38 @@ async function hashPassword(password: string) {
   return `pbkdf2-sha256$120000$${toHex(salt)}$${toHex(new Uint8Array(bits))}`;
 }
 
+
+async function authAdmin<T = SupabaseRow>(path: string, init: RequestInit = {}): Promise<T> {
+  const { url, key } = config();
+  const res = await fetch(`${url}/auth/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || `Auth error ${res.status}`);
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+async function createSupabaseAuthUser(email: string, password: string) {
+  return authAdmin<{ id: string }>("admin/users", {
+    method: "POST",
+    body: JSON.stringify({ email, password, email_confirm: true }),
+  });
+}
+
+async function deleteSupabaseAuthUser(id: string) {
+  try {
+    await authAdmin(`admin/users/${encodeURIComponent(id)}`, { method: "DELETE" });
+  } catch {
+    // Best-effort cleanup only. Never hide the original registration error.
+  }
+}
+
 export const registerUser = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => registerSchema.parse(data))
   .handler(async ({ data }) => {
@@ -79,7 +111,26 @@ export const registerUser = createServerFn({ method: "POST" })
     );
     if (existing[0]) throw new Error("Username hiyo tayari inatumika.");
 
-    const profileId = crypto.randomUUID();
+    const existingEmail = await db<SupabaseRow[]>(
+      `profiles?email=eq.${encodeURIComponent(data.email.toLowerCase())}&select=id&limit=1`,
+      { method: "GET" },
+    );
+    if (existingEmail[0]) throw new Error("Email hiyo tayari imesajiliwa.");
+
+    // profiles.id is linked to auth.users.id in the user's shared Supabase database.
+    // Therefore the Auth user MUST be created first; a random UUID alone cannot satisfy the FK.
+    let authUser: { id: string };
+    try {
+      authUser = await createSupabaseAuthUser(data.email.toLowerCase(), data.password);
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : String(error);
+      if (/already|registered|exists|duplicate/i.test(raw)) {
+        throw new Error("Email hiyo tayari imesajiliwa kwenye mfumo. Tumia email nyingine au Login.");
+      }
+      throw new Error(`Usajili wa akaunti umeshindikana: ${raw}`);
+    }
+
+    const profileId = authUser.id;
     const rows = await db<SupabaseRow[]>("profiles", {
       method: "POST",
       body: JSON.stringify({
@@ -97,7 +148,10 @@ export const registerUser = createServerFn({ method: "POST" })
       }),
     });
     const user = rows[0];
-    if (!user) throw new Error("Usajili haujahifadhiwa.");
+    if (!user) {
+      await deleteSupabaseAuthUser(authUser.id);
+      throw new Error("Usajili haujahifadhiwa.");
+    }
 
     try {
       await db("chatblog_account_details", {
@@ -112,6 +166,7 @@ export const registerUser = createServerFn({ method: "POST" })
       });
     } catch (error) {
       await db(`profiles?id=eq.${encodeURIComponent(String(user.id))}`, { method: "DELETE" });
+      await deleteSupabaseAuthUser(authUser.id);
       throw error;
     }
 
