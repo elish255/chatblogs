@@ -1,11 +1,19 @@
-const CHATBLOG_AVATAR_BASE = "/avatars/foreigner-";
-function avatarUrl(id){ return `${CHATBLOG_AVATAR_BASE}${Number(id)}.svg`; }
-function setSpriteAvatar(el,id){
+const CHATBLOG_REAL_PHOTOS = Array.from({ length: 60 }, (_, index) =>
+  `https://randomuser.me/api/portraits/${index < 30 ? "men" : "women"}/${(index % 30) + 1}.jpg`,
+);
+
+function getRealPartnerPhoto(id) {
+  const n = Math.max(1, Number(id) || 1);
+  return CHATBLOG_REAL_PHOTOS[(n - 1) % CHATBLOG_REAL_PHOTOS.length];
+}
+function setRealPartnerPhoto(el, id) {
+  if (!el) return;
   el.classList.remove("sprite-avatar");
-  el.src = avatarUrl(id);
   el.style.backgroundImage = "none";
   el.style.backgroundPosition = "center";
+  el.src = getRealPartnerPhoto(id);
 }
+
 /* =========================================================
    LUGHAPAY - KISWAHILI CONVERSATION ENGINE
    Version 2.1
@@ -2629,7 +2637,7 @@ function renderWazungu() {
     card.innerHTML = `
       <div class="mzungu-header">
         <div class="avatar-wrap">
-          <img src="/avatars/foreigner-${partner.id}.svg" class="avatar" alt="${partner.name}">
+          <img src="${getRealPartnerPhoto(partner.id)}" class="avatar" alt="${partner.name}" loading="lazy" referrerpolicy="no-referrer">
           <span class="presence-dot ${state}" aria-label="${state}"></span>
         </div>
         <div class="mzungu-info">
@@ -2717,7 +2725,7 @@ function openTimeSelectModal(id) {
   if (avatar) {
 
     avatar.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
-    setSpriteAvatar(avatar, currentSelectedMzungu.id);
+    setRealPartnerPhoto(avatar, currentSelectedMzungu.id);
 
   }
 
@@ -2799,7 +2807,7 @@ function confirmStartChat(
 
   if (chatAvatar) {
 
-    setSpriteAvatar(chatAvatar, currentSelectedMzungu.id);
+    setRealPartnerPhoto(chatAvatar, currentSelectedMzungu.id);
 
   }
 
@@ -3779,7 +3787,7 @@ document.addEventListener(
 
 // CUSTOMER CARE: HEADER + FLOATING BUTTONS
 document.addEventListener('DOMContentLoaded', () => {
-  const customerCareWhatsAppUrl = 'https://wa.me/255725310967';
+  const customerCareWhatsAppUrl = '/login';
   const customerCareBtns = document.querySelectorAll('.btn-customer-care');
   customerCareBtns.forEach(btn => {
     btn.setAttribute('href', customerCareWhatsAppUrl);

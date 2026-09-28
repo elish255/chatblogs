@@ -53,3 +53,8 @@ alter table public.chatblog_account_details add column if not exists password_ha
 
 -- The ChatBlog server uses the Supabase service-role key for database access.
 -- No public policies are created here.
+
+
+-- IMPORTANT: profiles.id is expected to reference auth.users.id in the shared database.
+-- The application creates the Supabase Auth user first and then inserts profiles with the same id.
+-- No existing rows are deleted or altered by this migration.

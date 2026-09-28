@@ -85,11 +85,40 @@ async function authAdmin<T = SupabaseRow>(path: string, init: RequestInit = {}):
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
-async function createSupabaseAuthUser(email: string, password: string) {
-  return authAdmin<{ id: string }>("admin/users", {
-    method: "POST",
-    body: JSON.stringify({ email, password, email_confirm: true }),
-  });
+async function findSupabaseAuthUserByEmail(email: string) {
+  try {
+    const result = await authAdmin<{ users?: Array<{ id: string; email?: string | null }> }>(
+      "admin/users?per_page=1000&page=1",
+      { method: "GET" },
+    );
+    return (result.users ?? []).find((u) => String(u.email ?? "").toLowerCase() === email.toLowerCase()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function createOrRecoverSupabaseAuthUser(email: string, password: string) {
+  try {
+    return {
+      user: await authAdmin<{ id: string }>("admin/users", {
+        method: "POST",
+        body: JSON.stringify({ email, password, email_confirm: true }),
+      }),
+      created: true,
+    };
+  } catch (error) {
+    const existing = await findSupabaseAuthUserByEmail(email);
+    if (!existing) throw error;
+
+    // This is normally an orphaned Auth user left by an interrupted registration.
+    // A real profile is checked before this function is called, so we only recover
+    // an Auth record that does not yet belong to a ChatBlog/Chatpesa profile.
+    const updated = await authAdmin<{ id: string }>(`admin/users/${encodeURIComponent(existing.id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ password, email_confirm: true }),
+    });
+    return { user: updated, created: false };
+  }
 }
 
 async function deleteSupabaseAuthUser(id: string) {
@@ -121,11 +150,12 @@ export const registerUser = createServerFn({ method: "POST" })
     // Therefore the Auth user MUST be created first; a random UUID alone cannot satisfy the FK.
     let authUser: { id: string };
     try {
-      authUser = await createSupabaseAuthUser(data.email.toLowerCase(), data.password);
+      const result = await createOrRecoverSupabaseAuthUser(data.email.toLowerCase(), data.password);
+      authUser = result.user;
     } catch (error) {
       const raw = error instanceof Error ? error.message : String(error);
       if (/already|registered|exists|duplicate/i.test(raw)) {
-        throw new Error("Email hiyo tayari imesajiliwa kwenye mfumo. Tumia email nyingine au Login.");
+        throw new Error("Email hiyo tayari inatumika. Kama uliwahi kujaribu usajili bila kukamilika, tumia email hiyo tena baada ya kusafishwa kwenye Auth.");
       }
       throw new Error(`Usajili wa akaunti umeshindikana: ${raw}`);
     }
