@@ -59,7 +59,7 @@ export const createPaymentOrder = createServerFn({ method: "POST" })
     if (!key || !createUrl) {
       return {
         ok: false as const,
-        message: "Fimipay haijawekwa sawa. Weka FIMIPAY_API_KEY na FIMIPAY_CREATE_PAYMENT_URL kwenye server.",
+        message: "Huduma ya malipo ya moja kwa moja haijawekwa sawa kwenye server.",
       };
     }
 
@@ -88,7 +88,7 @@ export const createPaymentOrder = createServerFn({ method: "POST" })
     if (!res.ok || !parsed.success || !parsed.orderId) {
       return {
         ok: false as const,
-        message: parsed.message || "Imeshindikana kuanzisha malipo ya Fimipay.",
+        message: parsed.message || "Imeshindikana kuanzisha malipo ya moja kwa moja.",
       };
     }
 

@@ -7,12 +7,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as JisajiliRouteImport } from './routes/jisajili'
 import { Route as LipaRouteImport } from './routes/lipa'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 
 const IndexRoute = IndexRouteImport.update({ id: '/', path: '/', getParentRoute: () => rootRouteImport } as any)
 const JisajiliRoute = JisajiliRouteImport.update({ id: '/jisajili', path: '/jisajili', getParentRoute: () => rootRouteImport } as any)
 const LipaRoute = LipaRouteImport.update({ id: '/lipa', path: '/lipa', getParentRoute: () => rootRouteImport } as any)
 const LoginRoute = LoginRouteImport.update({ id: '/login', path: '/login', getParentRoute: () => rootRouteImport } as any)
+const AdminRoute = AdminRouteImport.update({ id: '/admin', path: '/admin', getParentRoute: () => rootRouteImport } as any)
 const DashboardRoute = DashboardRouteImport.update({ id: '/dashboard', path: '/dashboard', getParentRoute: () => rootRouteImport } as any)
 
 export interface FileRoutesByFullPath {
@@ -21,6 +23,7 @@ export interface FileRoutesByFullPath {
   '/lipa': typeof LipaRoute
   '/login': typeof LoginRoute
   '/dashboard': typeof DashboardRoute
+  '/admin': typeof AdminRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -28,6 +31,7 @@ export interface FileRoutesByTo {
   '/lipa': typeof LipaRoute
   '/login': typeof LoginRoute
   '/dashboard': typeof DashboardRoute
+  '/admin': typeof AdminRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -36,13 +40,14 @@ export interface FileRoutesById {
   '/lipa': typeof LipaRoute
   '/login': typeof LoginRoute
   '/dashboard': typeof DashboardRoute
+  '/admin': typeof AdminRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/jisajili' | '/lipa' | '/login' | '/dashboard'
+  fullPaths: '/' | '/jisajili' | '/lipa' | '/login' | '/dashboard' | '/admin'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/jisajili' | '/lipa' | '/login' | '/dashboard'
-  id: '__root__' | '/' | '/jisajili' | '/lipa' | '/login' | '/dashboard'
+  to: '/' | '/jisajili' | '/lipa' | '/login' | '/dashboard' | '/admin'
+  id: '__root__' | '/' | '/jisajili' | '/lipa' | '/login' | '/dashboard' | '/admin'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -51,6 +56,7 @@ export interface RootRouteChildren {
   LipaRoute: typeof LipaRoute
   LoginRoute: typeof LoginRoute
   DashboardRoute: typeof DashboardRoute
+  AdminRoute: typeof AdminRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -60,10 +66,11 @@ declare module '@tanstack/react-router' {
     '/lipa': { id: '/lipa'; path: '/lipa'; fullPath: '/lipa'; preLoaderRoute: typeof LipaRouteImport; parentRoute: typeof rootRouteImport }
     '/login': { id: '/login'; path: '/login'; fullPath: '/login'; preLoaderRoute: typeof LoginRouteImport; parentRoute: typeof rootRouteImport }
     '/dashboard': { id: '/dashboard'; path: '/dashboard'; fullPath: '/dashboard'; preLoaderRoute: typeof DashboardRouteImport; parentRoute: typeof rootRouteImport }
+    '/admin': { id: '/admin'; path: '/admin'; fullPath: '/admin'; preLoaderRoute: typeof AdminRouteImport; parentRoute: typeof rootRouteImport }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = { IndexRoute, JisajiliRoute, LipaRoute, LoginRoute, DashboardRoute }
+const rootRouteChildren: RootRouteChildren = { IndexRoute, JisajiliRoute, LipaRoute, LoginRoute, AdminRoute, DashboardRoute }
 export const routeTree = rootRouteImport._addFileChildren(rootRouteChildren)._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'

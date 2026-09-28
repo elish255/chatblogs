@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { ArrowLeft, CheckCircle2, Copy, Loader2, Zap } from "lucide-react";
 import { ACTIVATION_FEE, PAYMENT_BUSINESS_NAME, PAYMENT_LIPA_NUMBER, loadToken } from "@/lib/session";
-import { getDashboard, submitPayment } from "@/lib/backend.functions";
+import { getDashboard, submitPayment, submitAutomaticPayment } from "@/lib/backend.functions";
 import { checkPaymentStatus, createPaymentOrder } from "@/lib/fimipay.functions";
 
 export const Route = createFileRoute("/lipa")({ component: Lipa });
@@ -12,38 +12,42 @@ function Lipa() {
   const navigate = useNavigate();
   const load = useServerFn(getDashboard);
   const sendPayment = useServerFn(submitPayment);
+  const sendAutomaticPayment = useServerFn(submitAutomaticPayment);
   const createOrder = useServerFn(createPaymentOrder);
   const statusOrder = useServerFn(checkPaymentStatus);
-  const [phone, setPhone] = useState("");
+  const [automaticPhone, setAutomaticPhone] = useState("");
+  const [manualPhone, setManualPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => { if (!loadToken()) navigate({ to: "/jisajili" }); }, [navigate]);
-  const normalized = () => phone.replace(/\s/g, "");
-  const valid = () => /^(0|255)\d{9}$/.test(normalized());
+  const normalizedAutomatic = () => automaticPhone.replace(/\s/g, "");
+  const normalizedManual = () => manualPhone.replace(/\s/g, "");
+  const validAutomatic = () => /^(0|255)\d{9}$/.test(normalizedAutomatic());
+  const validManual = () => /^(0|255)\d{9}$/.test(normalizedManual());
 
   async function manual(e: React.FormEvent) {
     e.preventDefault(); setMessage("");
-    if (!valid()) return setMessage("Weka namba sahihi, mfano 0712345678.");
+    if (!validManual()) return setMessage("Weka namba sahihi, mfano 0712345678.");
     const token=loadToken(); if (!token) return navigate({to:"/jisajili"});
     setLoading(true);
-    try { await sendPayment({data:{token,phone:normalized()}}); setDone(true); }
+    try { await sendPayment({data:{token,phone:normalizedManual()}}); setDone(true); }
     catch(err){ setMessage(err instanceof Error ? err.message : "Imeshindikana kutuma taarifa ya malipo."); }
     finally{setLoading(false);}
   }
 
   async function automatic() {
     setMessage("");
-    if (!valid()) return setMessage("Weka namba ya simu ya kulipia kwanza.");
+    if (!validAutomatic()) return setMessage("Weka namba ya simu ya kulipia kwanza.");
     const token=loadToken(); if(!token) return navigate({to:"/jisajili"});
     setLoading(true);
     try {
       const profile=await load({data:{token}});
       if(!profile.ok || !profile.user) throw new Error("Taarifa za akaunti hazipatikani.");
-      const order=await createOrder({data:{buyer_name:String(profile.user.name),buyer_email:String(profile.user.email),buyer_phone:normalized(),amount:ACTIVATION_FEE}});
-      if(!order.ok || !order.order_id) throw new Error(order.message || "Imeshindikana kuanzisha Fimipay.");
+      const order=await createOrder({data:{buyer_name:String(profile.user.name),buyer_email:String(profile.user.email),buyer_phone:normalizedAutomatic(),amount:ACTIVATION_FEE}});
+      if(!order.ok || !order.order_id) throw new Error(order.message || "Imeshindikana kuanzisha malipo.");
       setMessage(order.message || "Thibitisha malipo kwenye simu yako.");
       let paid=false;
       for(let i=0;i<12;i++){
@@ -51,12 +55,12 @@ function Lipa() {
         const st=await statusOrder({data:{order_id:order.order_id}});
         const status=String(st.status).toUpperCase();
         if(["SUCCESS","SUCCESSFUL","PAID","COMPLETED","APPROVED"].includes(status)){paid=true;break;}
-        if(["FAILED","CANCELLED","CANCELED","EXPIRED","DECLINED"].includes(status)) throw new Error("Malipo hayajakamilika. Jaribu tena au tumia Lipa Namba.");
+        if(["FAILED","CANCELLED","CANCELED","EXPIRED","DECLINED"].includes(status)) throw new Error("Malipo hayajakamilika. Jaribu tena au tumia njia ya Lipa Namba.");
       }
       if(!paid) throw new Error("Muda wa kusubiri malipo umeisha. Kama umelipa, tumia NIMELIPIA.");
-      await sendPayment({data:{token,phone:normalized()}});
+      await sendAutomaticPayment({data:{token,phone:normalizedAutomatic()}});
       setDone(true);
-    } catch(err){ setMessage(err instanceof Error ? err.message : "Automatic payment imeshindikana."); }
+    } catch(err){ setMessage(err instanceof Error ? err.message : "Malipo ya moja kwa moja yameshindikana."); }
     finally{setLoading(false);}
   }
 
@@ -77,19 +81,23 @@ function Lipa() {
         <p className="mt-2 text-sm font-bold">{PAYMENT_BUSINESS_NAME}</p><p className="mt-1 text-sm font-bold">TZS {ACTIVATION_FEE.toLocaleString()}</p>{copied&&<p className="mt-2 text-xs font-bold">Lipa namba imenakiliwa ✓</p>}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4">
-        <div className="flex items-center gap-2"><Zap className="h-5 w-5 text-teal-600"/><h2 className="font-black">Automatic Payment — Fimipay</h2></div>
-        <p className="mt-1 text-xs leading-5 text-slate-600">Weka namba ya simu kisha bonyeza hapa. Push ya Fimipay itatumwa kwenye simu yako.</p>
-        <input value={phone} onChange={e=>setPhone(e.target.value)} type="tel" className="mt-3 w-full rounded-xl bg-white px-4 py-3 outline-none" placeholder="0712345678"/>
-        <button type="button" onClick={()=>void automatic()} disabled={loading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 py-3.5 font-black text-white disabled:opacity-60">{loading&&<Loader2 className="h-4 w-4 animate-spin"/>} LIPA AUTOMATIC — TZS {ACTIVATION_FEE.toLocaleString()}</button>
+      <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+        <div className="flex items-center gap-2"><Zap className="h-5 w-5 text-emerald-600"/><h2 className="font-black">Malipo ya Automatic</h2></div>
+        <p className="mt-1 text-xs leading-5 text-slate-600">Weka namba ya simu kisha bonyeza kitufe. Push ya malipo itatumwa kwenye simu yako.</p>
+        <input value={automaticPhone} onChange={e=>setAutomaticPhone(e.target.value)} type="tel" className="mt-3 w-full rounded-xl bg-white px-4 py-3 outline-none" placeholder="0712345678"/>
+        <button type="button" onClick={()=>void automatic()} disabled={loading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 py-3.5 font-black text-white disabled:opacity-60">{loading&&<Loader2 className="h-4 w-4 animate-spin"/>} LIPA TZS {ACTIVATION_FEE.toLocaleString()} AUTOMATIC</button>
       </div>
 
-      <div className="my-5 flex items-center gap-3"><div className="h-px flex-1 bg-slate-200"/><span className="text-xs font-black text-slate-400">AU MANUAL</span><div className="h-px flex-1 bg-slate-200"/></div>
-      <form onSubmit={manual} className="space-y-3">
-        <label className="block text-sm font-bold">Namba uliyotumia kulipa<input value={phone} onChange={e=>setPhone(e.target.value)} type="tel" className="mt-1 w-full rounded-xl bg-slate-100 px-4 py-3 outline-none" placeholder="0712345678"/></label>
+      <div className="my-6 flex items-center gap-3"><div className="h-px flex-1 bg-slate-200"/><span className="text-xs font-black text-slate-400">AU</span><div className="h-px flex-1 bg-slate-200"/></div>
+      <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5">
+      <h2 className="font-black">Lipa Namba</h2>
+      <p className="mt-1 text-xs leading-5 text-slate-600">Lipa kwa kutumia namba iliyo hapo juu, kisha tuma uthibitisho wako.</p>
+      <form onSubmit={manual} className="mt-4 space-y-3">
+        <label className="block text-sm font-bold">Namba uliyotumia kulipa<input value={manualPhone} onChange={e=>setManualPhone(e.target.value)} type="tel" className="mt-1 w-full rounded-xl bg-slate-100 px-4 py-3 outline-none" placeholder="0712345678"/></label>
         {message&&<p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-700">{message}</p>}
         <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-blue-600 py-3.5 font-black text-white disabled:opacity-60">{loading&&<Loader2 className="h-4 w-4 animate-spin"/>} NIMELIPIA</button>
       </form>
+      </div>
     </div>
   </div></main>;
 }

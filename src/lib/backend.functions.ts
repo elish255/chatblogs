@@ -160,6 +160,19 @@ export const submitPayment = createServerFn({ method: "POST" })
     return { ok: true as const, message: "Taarifa ya malipo imetumwa kwa admin. Subiri akaunti i-activate." };
   });
 
+
+export const submitAutomaticPayment = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => paymentSchema.parse(data))
+  .handler(async ({ data }) => {
+    const users = await db<SupabaseRow[]>(`chatblog_users?public_token=eq.${encodeURIComponent(data.token)}&select=id,name,email,status&limit=1`, { method: "GET" });
+    const user = users[0];
+    if (!user) throw new Error("Akaunti haipatikani.");
+    await db("chatblog_activation_payments", { method: "POST", body: JSON.stringify({ user_id: user.id, method: "fimipay", amount: 14500, phone: normalizePhone(data.phone), status: "pending", metadata: { source: "chatblog", channel: "automatic" } }) });
+    await db(`chatblog_users?id=eq.${encodeURIComponent(String(user.id))}`, { method: "PATCH", body: JSON.stringify({ status: "pending" }) });
+    await db("chatblog_admin_notifications", { method: "POST", body: JSON.stringify({ type: "payment", user_id: user.id, title: "Malipo mapya", message: `${user.name} amekamilisha malipo ya moja kwa moja kwa ${data.phone}.`, read: false }) });
+    return { ok: true as const, message: "Malipo yamepokelewa. Subiri account i-activate." };
+  });
+
 const adminSchema = z.object({ password: z.string().min(1) });
 export const adminListUsers = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => adminSchema.parse(data))
