@@ -127,7 +127,7 @@ const loginSchema = z.object({
 export const loginUser = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => loginSchema.parse(data))
   .handler(async ({ data }) => {
-    const rows = await db<SupabaseRow[]>(`chatblog_users?username.ilike=${encodeURIComponent(data.username)}&select=${USER_SELECT},password_hash,password_salt&limit=1`, { method: "GET" });
+    const rows = await db<SupabaseRow[]>(`chatblog_users?username=ilike.${encodeURIComponent(data.username)}&select=${USER_SELECT},password_hash,password_salt&limit=1`, { method: "GET" });
     const user = rows[0];
     if (!user || !(await verifyPassword(data.password, String(user.password_hash ?? ""), String(user.password_salt ?? "")))) {
       throw new Error("Username au password si sahihi.");
