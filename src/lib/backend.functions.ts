@@ -260,10 +260,21 @@ export const startChat = createServerFn({ method: "POST" })
     const users = await db<SupabaseRow[]>(`chatblog_users?public_token=eq.${encodeURIComponent(data.token)}&select=id,status&limit=1`, { method: "GET" });
     const user = users[0];
     if (!user || user.status !== "active") throw new Error("Akaunti yako haija-activate.");
-    const rows = await db<SupabaseRow>("chatblog_chat_sessions", { method: "POST", body: JSON.stringify({ user_id: user.id, person_name: data.foreigner, payout: data.price, message_count: 0, status: "open" }) });
-    const chat = rows as SupabaseRow;
-    if (!chat?.id) throw new Error("Chat haijaanza.");
-    return { ok: true as const, chatId: String(chat.id) };
+    const sessionId = crypto.randomUUID();
+    const rows = await db<SupabaseRow[]>("chatblog_chat_sessions?select=id,session_id", {
+      method: "POST",
+      body: JSON.stringify({
+        session_id: sessionId,
+        user_id: user.id,
+        person_name: data.foreigner,
+        payout: data.price,
+        message_count: 0,
+        status: "open",
+      }),
+    });
+    const chat = Array.isArray(rows) ? rows[0] : undefined;
+    if (!chat?.id) throw new Error("Chat haijaanza. Hakikisha SQL ya chatblog_chat_sessions ime-run kwenye Supabase.");
+    return { ok: true as const, chatId: String(chat.id), sessionId: String(chat.session_id ?? sessionId) };
   });
 
 const messageSchema = tokenSchema.extend({ chatId: z.string().uuid(), text: z.string().trim().min(1).max(500) });
